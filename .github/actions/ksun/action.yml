@@ -1,70 +1,108 @@
-name: Set up KernelSU-Next
-description: download and set up KSUN into the kernel source
-inputs:
- susfs:
-  description: 'susfs'
-  required: true
 
+name: Set up SukiSU-Ultra
+description: Download and integrate official SukiSU-Ultra into the Samsung kernel source
+
+inputs:
+  susfs:
+    description: 'Enable SUSFS integration'
+    required: true
 
 runs:
   using: composite
   steps:
-    - name: Setup KSUN with no susfs
-      if: inputs.susfs == 'false'
+
+    - name: Setup SukiSU-Ultra
       shell: bash
       run: |
+        set -euo pipefail
+
+        echo "======================================"
+        echo "       Setting up SukiSU-Ultra"
+        echo "======================================"
+
         cd "$COMMON"
-        curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -s dev
 
-    - name: Setup pershoot KSUN with susfs
-      if: inputs.susfs == 'true'
+        if [ -d "KernelSU" ]; then
+          echo "Existing SukiSU-Ultra directory found."
+          echo "Removing previous integration directory."
+          rm -rf KernelSU
+        fi
+
+        curl --fail --location --silent --show-error \
+          "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" \
+          | bash -s main
+
+        echo "SukiSU-Ultra integration completed."
+
+    - name: Verify SukiSU-Ultra installation
       shell: bash
       run: |
+        set -euo pipefail
+
         cd "$COMMON"
-        curl -LSs "https://raw.githubusercontent.com/pershoot/KernelSU-Next/dev-susfs/kernel/setup.sh" | bash -s dev-susfs
 
-    - name: enable in defconfig
+        if [ ! -d "KernelSU/.git" ]; then
+          echo "ERROR: SukiSU-Ultra source was not installed correctly."
+          exit 1
+        fi
+
+        if [ ! -f "KernelSU/kernel/Kbuild" ]; then
+          echo "ERROR: SukiSU-Ultra Kbuild not found."
+          exit 1
+        fi
+
+        cd KernelSU
+
+        git fetch --tags origin main
+
+        SUKISU_COMMIT=$(git rev-parse HEAD)
+        SUKISU_SHORT=$(git rev-parse --short HEAD)
+        SUKISU_TAG=$(git describe --tags --abbrev=0 HEAD 2>/dev/null || echo "untagged")
+
+        echo "SukiSU-Ultra commit: $SUKISU_COMMIT"
+        echo "SukiSU-Ultra version: $SUKISU_TAG"
+
+        echo "SUKISU_COMMIT=$SUKISU_COMMIT" >> "$GITHUB_ENV"
+        echo "SUKISU_SHORT=$SUKISU_SHORT" >> "$GITHUB_ENV"
+        echo "SUKISU_TAG=$SUKISU_TAG" >> "$GITHUB_ENV"
+
+    - name: Enable SukiSU-Ultra kernel configuration
       shell: bash
       run: |
-         "$COMMON/scripts/config" --file "$GKI_DEFCONFIG" --enable CONFIG_KSU
+        set -euo pipefail
 
-         if [[ ${{ inputs.susfs }} == 'true' ]]; then
+        echo "Configuring SukiSU-Ultra..."
+
+        "$COMMON/scripts/config" \
+          --file "$GKI_DEFCONFIG" \
+          --enable CONFIG_KSU
+
+        "$COMMON/scripts/config" \
+          --file "$GKI_DEFCONFIG" \
+          --enable CONFIG_KPROBES
+
+        "$COMMON/scripts/config" \
+          --file "$GKI_DEFCONFIG" \
+          --enable CONFIG_EXT4_FS
+
+        if [[ "${{ inputs.susfs }}" == "true" ]]; then
+          echo "SUSFS enabled: preserving Samsung security configuration adjustments."
+
           "$COMMON/scripts/config" --file "$GKI_DEFCONFIG" --disable CONFIG_KSU_SAMSUNG_KDP
           "$COMMON/scripts/config" --file "$GKI_DEFCONFIG" --disable CONFIG_KSU_SAMSUNG_RKP
           "$COMMON/scripts/config" --file "$GKI_DEFCONFIG" --disable CONFIG_KSU_SAMSUNG_DEFEX
           "$COMMON/scripts/config" --file "$GKI_DEFCONFIG" --disable CONFIG_KSU_SAMSUNG_NO_PATCH_TEXT
-         fi
-      
-    - name: Extract KSU Version Info and inject into Kbuild
+        fi
+
+        echo "SukiSU-Ultra kernel configuration completed."
+
+    - name: Verify kernel configuration
       shell: bash
       run: |
-        cd "$COMMON/KernelSU-Next"
+        set -euo pipefail
 
-        # Fetch dev branch for version info (tags, commits, etc.)
-        git fetch origin dev 2>/dev/null || true
-        
-        # Extract and export KSU version info from dev branch
-        KSU_GIT_VERSION=$(git rev-list --count refs/remotes/origin/dev 2>/dev/null)
-        KSU_GIT_TAG=$(git describe --tags --abbrev=0 refs/remotes/origin/dev 2>/dev/null || echo "")
-        KSU_COMMIT=$(git rev-parse --short refs/remotes/origin/dev 2>/dev/null)
-        KSU_VERSION=$((30000 + KSU_GIT_VERSION))
+        echo "Checking required configuration..."
 
-        cd kernel
-        sed -i "s/^KSU_VERSION_FALLBACK := 1$/KSU_VERSION_FALLBACK := ${KSU_VERSION}/" Kbuild
-        sed -i "s/^KSU_VERSION_TAG_FALLBACK := v0.0.1$/KSU_VERSION_TAG_FALLBACK := ${KSU_GIT_TAG}/" Kbuild
-        
-        echo "KSU_GIT_TAG=$KSU_GIT_TAG" >> $GITHUB_ENV
-        echo "KSU_VERSION=$KSU_VERSION" >> $GITHUB_ENV
-        echo "KSU_COMMIT=$KSU_COMMIT" >> $GITHUB_ENV
+        grep -E 'CONFIG_KSU=|CONFIG_KPROBES=|CONFIG_EXT4_FS=' "$GKI_DEFCONFIG" || true
 
-#    - name: 'Fix KernelSU-Next'
-#      if: inputs.susfs == 'true'
-#      shell: bash
-#      run: |
-#        set -euo pipefail
-#        cd "$COMMON/KernelSU-Next"
-#        sed -i \
-#        -e 's/^static int security_context_to_sid_with_policy(/int security_context_to_sid_with_policy(/' \
-#        -e 's/^static int security_sid_to_context_with_policy(/int security_sid_to_context_with_policy(/' \
-#        -e 's/^static void security_compute_av_user_with_policy(/void security_compute_av_user_with_policy(/' \
-#        kernel/feature/selinux_hide.c
+        echo "Configuration verification completed."
