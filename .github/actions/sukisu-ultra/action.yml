@@ -35,10 +35,12 @@ runs:
         # Run official SukiSU-Ultra setup script to link drivers/kernelsu and patch Makefiles
         if [ "${{ inputs.susfs }}" == "true" ]; then
           echo "[+] Integrating SukiSU-Ultra (susfs branch)..."
-          curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" | bash -s susfs
+          # Downloads script and passes 'susfs' as the git target branch/tag
+          curl -LSs "https://githubusercontent.com" | bash -s susfs
         else
-          echo "[+] Integrating SukiSU-Ultra (main branch)..."
-          curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" | bash -s main
+          echo "[+] Integrating SukiSU-Ultra (default stable release)..."
+          # Leaving the argument blank allows setup.sh to safely resolve and checkout the latest stable tag
+          curl -LSs "https://githubusercontent.com" | bash
         fi
 
         # Verify integration
@@ -46,4 +48,5 @@ runs:
           echo "❌ Error: drivers/kernelsu symlink was not created!"
           exit 1
         fi
+        
         echo "✅ SukiSU-Ultra successfully integrated into $KERNEL_SRC"
