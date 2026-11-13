@@ -1,4 +1,4 @@
-Name: "Setup SukiSU-Ultra"
+name: "Setup SukiSU-Ultra"
 description: "Clones and integrates SukiSU-Ultra into the kernel source tree"
 inputs:
   susfs:
