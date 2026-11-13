@@ -1,27 +1,13 @@
-name: add configs
-description: add configs and disabling securities
+name: "add configs"
+description: "add configs and disabling securities"
 
 runs:
-  using: composite
+  using: "composite"
   steps:
-    - name: add mountify support
+    - name: configure kernel defconfigs
       shell: bash
       run: |
-        "$COMMON/scripts/config" --file "$GKI_DEFCONFIG" --enable CONFIG_OVERLAY_FS
-        "$COMMON/scripts/config" --file "$GKI_DEFCONFIG" --enable CONFIG_TMPFS_XATTR
-        "$COMMON/scripts/config" --file "$GKI_DEFCONFIG" --enable CONFIG_TMPFS_POSIX_ACL
-        
-    - name: enable LKM support
-      shell: bash
-      run: |
-        "$COMMON/scripts/config" --file "$GKI_DEFCONFIG" --enable CONFIG_KALLSYMS
-        "$COMMON/scripts/config" --file "$GKI_DEFCONFIG" --enable CONFIG_KALLSYMS_ALL
-        "$COMMON/scripts/config" --file "$GKI_DEFCONFIG" --enable CONFIG_LKM
-        
-    - name: enable KSU and nuke securities
-      shell: bash
-      run: |
-        # 1. Determine target config based on branch
+        # 1. Determine the accurate target config file based on the branch choice
         target_config=""
         
         if [[ $BRANCH == SM-S938B* || "$BRANCH" == "SM-S931B-Oneui8" ]]; then
@@ -38,34 +24,48 @@ runs:
             target_config="$GKI_DEFCONFIG"
         fi
         
-        # 2. Apply security nukes and mandatory KSU flags
+        # 2. Process changes if target configuration path is defined
         if [ -n "$target_config" ]; then
-         echo "Configuring root and stripping Knox protections in: $target_config"
+          echo "[+] Applying all modules, root, and security nukes inside: $target_config"
 
-         # Force KernelSU & SUSFS flags active
-         "$COMMON/scripts/config" --file "$target_config" --enable CONFIG_KSU
-         "$COMMON/scripts/config" --file "$target_config" --enable CONFIG_KSU_SUSFS
+          # --- Mountify Support ---
+          "$COMMON/scripts/config" --file "$target_config" --enable CONFIG_OVERLAY_FS
+          "$COMMON/scripts/config" --file "$target_config" --enable CONFIG_TMPFS_XATTR
+          "$COMMON/scripts/config" --file "$target_config" --enable CONFIG_TMPFS_POSIX_ACL
+          
+          # --- LKM Support ---
+          "$COMMON/scripts/config" --file "$target_config" --enable CONFIG_KALLSYMS
+          "$COMMON/scripts/config" --file "$target_config" --enable CONFIG_KALLSYMS_ALL
+          "$COMMON/scripts/config" --file "$target_config" --enable CONFIG_MODULES
+          
+          # --- KernelSU & SUSFS Features ---
+          "$COMMON/scripts/config" --file "$target_config" --enable CONFIG_KSU
+          "$COMMON/scripts/config" --file "$target_config" --enable CONFIG_KSU_SUSFS
 
-         # Samsung security nukes
-         "$COMMON/scripts/config" --file "$target_config" --disable CONFIG_UH
-         "$COMMON/scripts/config" --file "$target_config" --disable CONFIG_UH_RKP
-         "$COMMON/scripts/config" --file "$target_config" --disable CONFIG_UH_LKMAUTH
-         "$COMMON/scripts/config" --file "$target_config" --disable CONFIG_UH_LKM_BLOCK
-         "$COMMON/scripts/config" --file "$target_config" --disable CONFIG_RKP
-         "$COMMON/scripts/config" --file "$target_config" --disable CONFIG_RKP_CFP_JOPP
-         "$COMMON/scripts/config" --file "$target_config" --disable CONFIG_RKP_CFP_ROPP
-         "$COMMON/scripts/config" --file "$target_config" --disable CONFIG_RKP_CFP
-         "$COMMON/scripts/config" --file "$target_config" --disable CONFIG_SECURITY_DEFEX
-         "$COMMON/scripts/config" --file "$target_config" --disable CONFIG_PROCA
-         "$COMMON/scripts/config" --file "$target_config" --disable CONFIG_FIVE
-         "$COMMON/scripts/config" --file "$target_config" --disable CONFIG_KDP
-         "$COMMON/scripts/config" --file "$target_config" --disable CONFIG_KDP_NS
-         "$COMMON/scripts/config" --file "$target_config" --disable CONFIG_KNOX_NCM
+          # --- Samsung Security Reductions ---
+          "$COMMON/scripts/config" --file "$target_config" --disable CONFIG_UH
+          "$COMMON/scripts/config" --file "$target_config" --disable CONFIG_UH_RKP
+          "$COMMON/scripts/config" --file "$target_config" --disable CONFIG_UH_LKMAUTH
+          "$COMMON/scripts/config" --file "$target_config" --disable CONFIG_UH_LKM_BLOCK
+          "$COMMON/scripts/config" --file "$target_config" --disable CONFIG_RKP
+          "$COMMON/scripts/config" --file "$target_config" --disable CONFIG_RKP_CFP_JOPP
+          "$COMMON/scripts/config" --file "$target_config" --disable CONFIG_RKP_CFP_ROPP
+          "$COMMON/scripts/config" --file "$target_config" --disable CONFIG_RKP_CFP
+          "$COMMON/scripts/config" --file "$target_config" --disable CONFIG_SECURITY_DEFEX
+          "$COMMON/scripts/config" --file "$target_config" --disable CONFIG_PROCA
+          "$COMMON/scripts/config" --file "$target_config" --disable CONFIG_FIVE
+          "$COMMON/scripts/config" --file "$target_config" --disable CONFIG_KDP
+          "$COMMON/scripts/config" --file "$target_config" --disable CONFIG_KDP_NS
+          "$COMMON/scripts/config" --file "$target_config" --disable CONFIG_KNOX_NCM
+          
+          echo "✅ Target defconfig changes applied fully."
+        else
+          echo "⚠️ No targeted defconfig found for this active compilation group."
         fi
 
     - name: remove check_defconfig
       shell: bash
       run: |
         cd "$COMMON"
-        # Remove check_defconfig
+        # Remove check_defconfig validation restriction block
         sed -i 's/check_defconfig//' ./build.config.gki
