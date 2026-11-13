@@ -1,7 +1,9 @@
-name: Kernel Build Process
+
+name: SukiSU-Ultra Kernel Build Process
+
 permissions:
   contents: write
-  actions: write 
+  actions: write
 
 on:
   workflow_call:
@@ -62,24 +64,26 @@ jobs:
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v5
-       
+
       - name: Store branch as env variable
         run: BRANCH=${{ inputs.branch }} && echo "BRANCH=$BRANCH" >> $GITHUB_ENV
 
-      - name: get kernel version before cloning
+      - name: Get kernel version before cloning
         uses: ./.github/actions/kernel-info
 
       - name: Store LTO as env variable
         run: |
-         if [[ $KERNEL_VER != 6.6 ]]; then
-          BUILD_LTO=${{ inputs.lto }} && echo "BUILD_LTO=$BUILD_LTO" >> $GITHUB_ENV
-         else
-          BUILD_LTO="default" && echo "BUILD_LTO=$BUILD_LTO" >> $GITHUB_ENV
-         fi
-        
+          if [[ $KERNEL_VER != 6.6 ]]; then
+            BUILD_LTO=${{ inputs.lto }}
+            echo "BUILD_LTO=$BUILD_LTO" >> $GITHUB_ENV
+          else
+            BUILD_LTO="default"
+            echo "BUILD_LTO=$BUILD_LTO" >> $GITHUB_ENV
+          fi
+
       - name: Free Disk Space
         if: true
-        uses: endersonmenezes/free-disk-space@v3  # Use @main for latest, @v3 for stable
+        uses: endersonmenezes/free-disk-space@v3
         with:
           remove_android: true
           remove_dotnet: true
@@ -89,76 +93,58 @@ jobs:
           remove_packages: "azure-cli google-cloud-cli microsoft-edge-stable google-chrome-stable firefox postgresql* temurin-* *llvm* mysql* dotnet-sdk-*"
           remove_packages_one_command: true
           remove_folders: "/usr/share/swift /usr/share/miniconda /usr/share/az* /usr/local/lib/node_modules /usr/local/share/chromium /usr/local/share/powershell /usr/local/julia /usr/local/aws-cli /usr/local/aws-sam-cli /usr/share/gradle"
-          rm_cmd: "rmz"  # Use 'rmz' for faster deletion (default: 'rm')
-          rmz_version: "3.1.1"  # Required when rm_cmd is 'rmz'
+          rm_cmd: "rmz"
+          rmz_version: "3.1.1"
           testing: false
 
-      - name: Setup more Swap (for LTO)
-        uses: pierotofy/set-swap-space@master # or thejerrybao/setup-swap-space@v1
+      - name: Setup more Swap
+        uses: pierotofy/set-swap-space@master
         with:
-          swap-size-gb: 25          # 10-24 GB is common for heavy LTO
-        # swap-space-path: /mnt/swapfile   # optional
+          swap-size-gb: 25
 
       - name: Parse branch for cache keys
         if: inputs.cache == 'true' && inputs.build_type == 'make'
         uses: ./.github/actions/parse-branch
 
-#      - name: set up bazel cache dir
-#        if: inputs.build_type == 'Bazel' && inputs.cache == 'true'
-#        run: |
-#          BCACHE_DIR="${{ github.workspace }}/.cache/bazel-disk-kernel"
-#          mkdir -p "$BCACHE_DIR"
-#          echo "BCACHE_DIR=$BCACHE_DIR" >> $GITHUB_ENV
-
- #     - name: set up bazel cache
- #       if: inputs.build_type == 'Bazel' && inputs.cache == 'true'
- #       uses: actions/cache@v6
- #       with:
- #        path: ${{ env.BCACHE_DIR }}
- #        key: bcache-${{ runner.os }}-${{ inputs.build_type }}-${{ env.FULL_BRANCH }}
- #        restore-keys: |
- #           bcache-${{ runner.os }}-${{ inputs.build_type }}-${{ env.FULL_BRANCH }}
-
       - name: Install ccache
         if: inputs.cache == 'true' && inputs.build_type == 'make'
         run: sudo apt-get update && sudo apt-get install -y ccache
-        
+
       - name: Export ccache + determinism
         if: inputs.cache == 'true' && inputs.build_type == 'make'
         run: |
           CACHE_DIR="${{ github.workspace }}/.ccache"
           mkdir -p "$CACHE_DIR"
-          CCACHE_LOG="${{ github.workspace }}/ccache.log"
-          
+
           SETTINGS=(
-          "CCACHE_DIR=$CACHE_DIR"
-          "CCACHE_MAXSIZE=12G"
-          "CCACHE_COMPILERCHECK=content"
-          "CCACHE_BASEDIR=${GITHUB_WORKSPACE}"
-          "CCACHE_NOHASHDIR=true"
-          "CCACHE_IGNOREOPTIONS=-sysroot* -fdebug-prefix-map=* -fmacro-prefix-map=*"
-          "CCACHE_COMPRESS=true"
-          "CCACHE_COMPRESSLEVEL=8"
-          "CCACHE_DIRECT=true"
-          "CCACHE_FILE_CLONE=true"
-          "CCACHE_INODE_CACHE=true"
-          "CCACHE_IS_KERNEL_COMPILING=true"
-          "CCACHE_UMASK=002"
-          "KBUILD_BUILD_TIMESTAMP=2026-01-01"
-          "CCACHE_SLOPPINESS=file_macro,time_macros,include_file_mtime,include_file_ctime,pch_defines,system_headers,locale,file_stat_matches"
+            "CCACHE_DIR=$CACHE_DIR"
+            "CCACHE_MAXSIZE=12G"
+            "CCACHE_COMPILERCHECK=content"
+            "CCACHE_BASEDIR=${GITHUB_WORKSPACE}"
+            "CCACHE_NOHASHDIR=true"
+            "CCACHE_IGNOREOPTIONS=-sysroot* -fdebug-prefix-map=* -fmacro-prefix-map=*"
+            "CCACHE_COMPRESS=true"
+            "CCACHE_COMPRESSLEVEL=8"
+            "CCACHE_DIRECT=true"
+            "CCACHE_FILE_CLONE=true"
+            "CCACHE_INODE_CACHE=true"
+            "CCACHE_IS_KERNEL_COMPILING=true"
+            "CCACHE_UMASK=002"
+            "KBUILD_BUILD_TIMESTAMP=2026-01-01"
+            "CCACHE_SLOPPINESS=file_macro,time_macros,include_file_mtime,include_file_ctime,pch_defines,system_headers,locale,file_stat_matches"
           )
 
           for setting in "${SETTINGS[@]}"; do
-           export "$setting"
-           echo "$setting" >> $GITHUB_ENV
+            export "$setting"
+            echo "$setting" >> $GITHUB_ENV
           done
 
           if ccache --help 2>&1 | grep -q 'depend_mode'; then
-              export CCACHE_DEPEND=true
-              echo "CCACHE_DEPEND=true" >> "$GITHUB_ENV"
+            export CCACHE_DEPEND=true
+            echo "CCACHE_DEPEND=true" >> "$GITHUB_ENV"
           fi
 
-      - name: restore ccache
+      - name: Restore ccache
         if: inputs.cache == 'true' && inputs.build_type == 'make'
         uses: actions/cache@v6
         with:
@@ -167,52 +153,50 @@ jobs:
           restore-keys: |
             ccache-${{ runner.os }}-${{ inputs.build_type }}-${{ env.BASE_BRANCH }}
             ccache-${{ runner.os }}-${{ inputs.build_type }}-
-            
+
       - name: Ensure ccache is used
         if: inputs.cache == 'true' && inputs.build_type == 'make'
         run: |
           echo "/usr/lib/ccache" >> $GITHUB_PATH
           echo "CC='ccache clang'" >> $GITHUB_ENV
           echo "CXX='ccache clang++'" >> $GITHUB_ENV
-        
+
       - name: Set CONFIG Environment Variable
         run: |
-          # Set CONFIG dynamically based on inputs values
           CONFIG="${BRANCH}-${ANDROID_VER}_${KERNEL_VER}"
-
-          # Set CONFIG as an environment variable for future steps
           echo "CONFIG=$CONFIG" >> $GITHUB_ENV
 
-      - name: dependencies
+      - name: Dependencies
         uses: ./.github/actions/dependencies
-          
+
       - name: Download Kernel
         uses: ./.github/actions/clone-kernel
-            
+
       - name: Set Path Environment Variables
         uses: ./.github/actions/env-variables
-          
+
       - name: Extract all tar.xz files and delete them
         run: |
           cd "$CONFIG"
-
           find . -type f -name '*.tar.xz' -print0 | while IFS= read -r -d '' file; do
             echo "Extracting $file"
             tar -xf "$file"
             rm "$file"
           done
 
-      - name: Add KernelSU-Next
+      # SukiSU-Ultra integration
+      # IMPORTANT: This action must exist and install actual SukiSU-Ultra.
+      - name: Add SukiSU-Ultra
         if: inputs.ksun == 'true'
-        uses: ./.github/actions/ksun
+        uses: ./.github/actions/sukisu-ultra
         with:
           susfs: ${{ inputs.susfs }}
-        
+
       - name: Add SUSFS
         if: inputs.susfs == 'true'
         uses: ./.github/actions/susfs-patches
 
-      - name: add nomount
+      - name: Add nomount
         if: inputs.nomount == 'true'
         uses: ./.github/actions/nomount
 
@@ -231,7 +215,7 @@ jobs:
       - name: Add ntsync
         if: inputs.ntsync == 'true'
         uses: ./.github/actions/ntsync
-        
+
       - name: Add bbrv3
         if: inputs.bbrv3 == 'true'
         uses: ./.github/actions/bbrv3
@@ -244,67 +228,54 @@ jobs:
         if: inputs.ttl == 'true'
         uses: ./.github/actions/TTL
 
-      - name: add optimization patches
+      - name: Add optimization patches
         if: inputs.optimization == 'true' && !startsWith(env.BRANCH, 'SM-S711')
         uses: ./.github/actions/optimization
-
-#      - name: Fix WiFi and Bluetooth on Samsung 6.6 GKI devices
-#        if: ${{ env.KERNEL_VER == '6.6' }}
-#        uses: ./.github/actions/6.6-fix
 
       - name: Set Kernel Configuration Variables
         if: inputs.ksun == 'true'
         uses: ./.github/actions/configs
-         
+
       - name: Change Kernel Name and clean dirty
         uses: ./.github/actions/kernel-name
 
-      - name: remove protected exports
+      - name: Remove protected exports
         uses: ./.github/actions/abi-export
-        
+
       - name: Set file name
         uses: ./.github/actions/file-name
         with:
-         ksun: ${{ inputs.ksun }}
-         susfs: ${{ inputs.susfs }}
-         nomount: ${{ inputs.nomount }}
-         bbg: ${{ inputs.bbg }}
-         bbrv3: ${{ inputs.bbrv3 }}
-         droidspaces: ${{ inputs.droidspace }}
-         ntsync: ${{ inputs.ntsync }}
-         ipv6_nat: ${{ inputs.ipv6_nat }}
-         ttl: ${{ inputs.ttl }}
-         unicodefix: ${{ inputs.unicodefix }}
-         
+          ksun: ${{ inputs.ksun }}
+          susfs: ${{ inputs.susfs }}
+          nomount: ${{ inputs.nomount }}
+          bbg: ${{ inputs.bbg }}
+          bbrv3: ${{ inputs.bbrv3 }}
+          droidspaces: ${{ inputs.droidspace }}
+          ntsync: ${{ inputs.ntsync }}
+          ipv6_nat: ${{ inputs.ipv6_nat }}
+          ttl: ${{ inputs.ttl }}
+          unicodefix: ${{ inputs.unicodefix }}
 
-#      - name: ensure bazel cache is set to be used
-#        if: inputs.build_type == 'Bazel' && inputs.cache == 'true'
-#        uses: ./.github/actions/use-bazcache
-
-      - name: change variables to ccache
+      - name: Change variables to ccache
         if: inputs.cache == 'true' && inputs.build_type == 'make'
         uses: ./.github/actions/use-ccache
 
-      - name: configure LTO
+      - name: Configure LTO
         uses: ./.github/actions/lto
-        
+
       - name: Build
         uses: ./.github/actions/build
         with:
-         build_type: ${{ inputs.build_type }}
+          build_type: ${{ inputs.build_type }}
 
-      - name: clean up ccache
+      - name: Clean up ccache
         if: inputs.cache == 'true' && inputs.build_type == 'make'
         run: ccache -c
-        
+
       - name: ccache stats
         if: inputs.cache == 'true' && inputs.build_type == 'make'
         run: ccache -s -v || ccache -s
 
-#      - name: bazel cache stats
-#        if: inputs.cache == 'true' && inputs.build_type == 'Bazel'
-#        run: bazel analyze-profile profile.json
-          
       - name: Prepare AnyKernel3
         uses: ./.github/actions/ak3zip-prep
 
@@ -316,64 +287,61 @@ jobs:
           path: |
             ./AnyKernel3/**
           compression-level: 9
-      
+
       - name: Scan and collect patch rejects
-        if: ${{ always() }}
+        if: always()
         run: |
           set -e
           CONFIG_DIR="$CONFIG"
           REJECTS_DIR="$GITHUB_WORKSPACE/patch-rejects"
           mkdir -p "$REJECTS_DIR"
-          # Find all .rej files under the configuration directory
+
           mapfile -t REJS < <(find "$CONFIG_DIR" -type f -name '*.rej')
           REJ_COUNT=${#REJS[@]}
           echo "Found $REJ_COUNT .rej files under $CONFIG_DIR"
           echo "REJ_COUNT=$REJ_COUNT" >> $GITHUB_ENV
+
           if [ "$REJ_COUNT" -gt 0 ]; then
             for REJ in "${REJS[@]}"; do
-              # Relative path from $CONFIG
               REL="${REJ#"$CONFIG_DIR"/}"
               DEST="$REJECTS_DIR/$REL"
               mkdir -p "$(dirname "$DEST")"
               cp "$REJ" "$DEST"
-              # Copy the associated original file alongside the .rej
+
               ORIG="${REJ%.rej}"
               if [ -f "$ORIG" ]; then
                 ORIG_DEST="$REJECTS_DIR/${REL%.rej}"
                 mkdir -p "$(dirname "$ORIG_DEST")"
                 cp "$ORIG" "$ORIG_DEST"
               fi
+
               echo "$REL" >> "$REJECTS_DIR/index.txt"
             done
           fi
 
       - name: Generate Build Summary
-        if: ${{ always() }}
+        if: always()
         run: |
-          # Create build summary file for inclusion in Misc artifact
           echo "# Kernel Build Summary" > build_summary.md
-          
-          # Add build variant header
           echo "## ${{ env.FILE_NAME }}" >> build_summary.md
-          
-          # Add build info
+
           echo "## Build Information" >> build_summary.md
           echo "- **Android Version**: ${{ inputs.android_version }}" >> build_summary.md
           echo "- **Kernel Version**: ${{ inputs.kernel_version }}.${{ inputs.sub_level }}" >> build_summary.md
           echo "- **BBG**: Installed" >> build_summary.md
           echo "" >> build_summary.md
 
-          # Get KernelSU-Next commit
-          if [ -d "$CONFIG/KernelSU-Next" ]; then
-            cd "$CONFIG/KernelSU-Next"
-            KSUN_COMMIT=$(git rev-parse HEAD)
-            KSUN_URL="https://github.com/WildKernels/KernelSU-Next/commit/$KSUN_COMMIT"
-            echo "- **KernelSU-Next**: [$KSUN_COMMIT]($KSUN_URL)" >> "$GITHUB_WORKSPACE/build_summary.md"
+          # Get SukiSU-Ultra commit
+          if [ -d "$CONFIG/SukiSU-Ultra" ]; then
+            cd "$CONFIG/SukiSU-Ultra"
+            SUKISU_COMMIT=$(git rev-parse HEAD)
+            SUKISU_URL="https://github.com/REPOSITORY/commit/$SUKISU_COMMIT"
+            echo "- **SukiSU-Ultra**: [$SUKISU_COMMIT]($SUKISU_URL)" >> "$GITHUB_WORKSPACE/build_summary.md"
             cd "$GITHUB_WORKSPACE"
           else
-            echo "- **KernelSU-Next**: not present" >> build_summary.md
+            echo "- **SukiSU-Ultra**: not present" >> build_summary.md
           fi
-          
+
           # Get Baseband-guard commit
           if [ -d "$CONFIG/Baseband-guard" ]; then
             cd "$CONFIG/Baseband-guard"
@@ -384,41 +352,46 @@ jobs:
           else
             echo "- **Baseband-guard**: not present" >> build_summary.md
           fi
-          
+
           # Get SUSFS4KSU commit
           if [ -d "$GITHUB_WORKSPACE/susfs4ksu" ]; then
             cd "$GITHUB_WORKSPACE/susfs4ksu"
             SUSFS_COMMIT=$(git rev-parse HEAD)
             SUSFS_URL="https://gitlab.com/simonpunk/susfs4ksu/-/commit/$SUSFS_COMMIT"
-            echo "- **SUSFS4KSU (v2.1.0)**: [$SUSFS_COMMIT]($SUSFS_URL)" >> "$GITHUB_WORKSPACE/build_summary.md"
+            echo "- **SUSFS4KSU**: [$SUSFS_COMMIT]($SUSFS_URL)" >> "$GITHUB_WORKSPACE/build_summary.md"
             cd "$GITHUB_WORKSPACE"
           else
-            echo "- **SUSFS4KSU (v2.1.0)**: not present" >> build_summary.md
+            echo "- **SUSFS4KSU**: not present" >> build_summary.md
           fi
+
           echo "" >> build_summary.md
-          
-          # Add artifact summary with presence verification
           echo "## Build Artifacts" >> build_summary.md
 
-          # Verify AnyKernel3 contents - check if kernel Image was actually copied (indicates successful build)
           if [ -d "AnyKernel3" ] && [ -f "AnyKernel3/Image" ]; then
             AK3_STATUS="✅"
           else
             AK3_STATUS="❌"
           fi
+
           echo "- **AnyKernel3**: $AK3_STATUS ${{ env.FILE_NAME }}-AnyKernel3" >> build_summary.md
 
           echo "### Misc (uploaded files)" >> build_summary.md
           FILES_PRESENT=0
+
           for f in "${{ env.FILE_NAME }}-Image" "${{ env.FILE_NAME }}-Image.gz" "${{ env.FILE_NAME }}-Image.lz4" "${{ env.FILE_NAME }}-boot.img" "${{ env.FILE_NAME }}-boot-gz.img" "${{ env.FILE_NAME }}-boot-lz4.img"; do
-            if [ -f "$f" ]; then FILES_PRESENT=$((FILES_PRESENT+1)); fi
+            if [ -f "$f" ]; then
+              FILES_PRESENT=$((FILES_PRESENT+1))
+            fi
           done
+
           if [ "$FILES_PRESENT" -gt 0 ]; then
             MISC_STATUS="✅"
           else
             MISC_STATUS="❌"
           fi
+
           echo "- **Set**: $MISC_STATUS ${{ env.FILE_NAME }}-Misc" >> build_summary.md
+
           if [ "$MISC_STATUS" = "✅" ]; then
             echo "  Included:" >> build_summary.md
             for f in "${{ env.FILE_NAME }}-Image" "${{ env.FILE_NAME }}-Image.gz" "${{ env.FILE_NAME }}-Image.lz4" "${{ env.FILE_NAME }}-boot.img" "${{ env.FILE_NAME }}-boot-gz.img" "${{ env.FILE_NAME }}-boot-lz4.img"; do
@@ -430,6 +403,7 @@ jobs:
 
           echo "### Diagnostics" >> build_summary.md
           echo "- **Rejected Patches**: ${{ env.FILE_NAME }}-Rejected-Patches" >> build_summary.md
+
           if [ -f patch-rejects/index.txt ]; then
             if [ -s patch-rejects/index.txt ]; then
               echo "  Rejected files:" >> build_summary.md
