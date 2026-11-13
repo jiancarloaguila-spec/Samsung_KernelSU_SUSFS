@@ -11,12 +11,12 @@ runs:
         "$COMMON/scripts/config" --file "$GKI_DEFCONFIG" --enable CONFIG_TMPFS_XATTR
         "$COMMON/scripts/config" --file "$GKI_DEFCONFIG" --enable CONFIG_TMPFS_POSIX_ACL
         
-    - name: enable KPM support
+    - name: enable LKM support
       shell: bash
       run: |
         "$COMMON/scripts/config" --file "$GKI_DEFCONFIG" --enable CONFIG_KALLSYMS
         "$COMMON/scripts/config" --file "$GKI_DEFCONFIG" --enable CONFIG_KALLSYMS_ALL
-        "$COMMON/scripts/config" --file "$GKI_DEFCONFIG" --enable CONFIG_KPM
+        "$COMMON/scripts/config" --file "$GKI_DEFCONFIG" --enable CONFIG_LKM
         
     - name: enable KSU and nuke securities
       shell: bash
