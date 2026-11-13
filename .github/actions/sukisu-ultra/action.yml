@@ -1,0 +1,107 @@
+name: Set up SukiSU-Ultra
+description: Download and integrate official SukiSU-Ultra into the Samsung kernel source
+
+inputs:
+  susfs:
+    description: 'Enable SUSFS integration'
+    required: true
+
+runs:
+  using: composite
+  steps:
+
+    - name: Setup SukiSU-Ultra
+      shell: bash
+      run: |
+        set -euo pipefail
+
+        echo "======================================"
+        echo "       Setting up SukiSU-Ultra"
+        echo "======================================"
+
+        cd "$COMMON"
+
+        if [ -d "KernelSU" ]; then
+          echo "Existing SukiSU-Ultra directory found."
+          echo "Removing previous integration directory."
+          rm -rf KernelSU
+        fi
+
+        curl --fail --location --silent --show-error \
+          "https://githubusercontent.com" \
+          | bash -s main
+
+        echo "SukiSU-Ultra integration completed."
+
+    - name: Verify SukiSU-Ultra installation
+      shell: bash
+      run: |
+        set -euo pipefail
+
+        cd "$COMMON"
+
+        if [ ! -d "KernelSU/.git" ]; then
+          echo "ERROR: SukiSU-Ultra source was not installed correctly."
+          exit 1
+        fi
+
+        if [ ! -f "KernelSU/kernel/Kbuild" ]; then
+          echo "ERROR: SukiSU-Ultra Kbuild not found."
+          exit 1
+        fi
+
+        cd KernelSU
+
+        git fetch --tags origin main
+
+        SUKISU_COMMIT=$(git rev-parse HEAD)
+        SUKISU_SHORT=$(git rev-parse --short HEAD)
+        SUKISU_TAG=$(git describe --tags --abbrev=0 HEAD 2>/dev/null || echo "untagged")
+
+        echo "SukiSU-Ultra commit: $SUKISU_COMMIT"
+        echo "SukiSU-Ultra version: $SUKISU_TAG"
+
+        echo "SUKISU_COMMIT=$SUKISU_COMMIT" >> "$GITHUB_ENV"
+        echo "SUKISU_SHORT=$SUKISU_SHORT" >> "$GITHUB_ENV"
+        echo "SUKISU_TAG=$SUKISU_TAG" >> "$GITHUB_ENV"
+
+    - name: Enable SukiSU-Ultra kernel configuration
+      shell: bash
+      run: |
+        set -euo pipefail
+
+        echo "Configuring SukiSU-Ultra..."
+
+        "$COMMON/scripts/config" \
+          --file "$GKI_DEFCONFIG" \
+          --enable CONFIG_KSU
+
+        "$COMMON/scripts/config" \
+          --file "$GKI_DEFCONFIG" \
+          --enable CONFIG_KPROBES
+
+        "$COMMON/scripts/config" \
+          --file "$GKI_DEFCONFIG" \
+          --enable CONFIG_EXT4_FS
+
+        if [[ "${{ inputs.susfs }}" == "true" ]]; then
+          echo "SUSFS enabled: preserving Samsung security configuration adjustments."
+
+          "$COMMON/scripts/config" --file "$GKI_DEFCONFIG" --disable CONFIG_KSU_SAMSUNG_KDP
+          "$COMMON/scripts/config" --file "$GKI_DEFCONFIG" --disable CONFIG_KSU_SAMSUNG_RKP
+          "$COMMON/scripts/config" --file "$GKI_DEFCONFIG" --disable CONFIG_KSU_SAMSUNG_DEFEX
+          "$COMMON/scripts/config" --file "$GKI_DEFCONFIG" --disable CONFIG_KSU_SAMSUNG_NO_PATCH_TEXT
+        fi
+
+        echo "SukiSU-Ultra kernel configuration completed."
+
+    - name: Verify kernel configuration
+      shell: bash
+      run: |
+        set -euo pipefail
+
+        echo "Checking required configuration..."
+
+        grep -E 'CONFIG_KSU=|CONFIG_KPROBES=|CONFIG_EXT4_FS=' "$GKI_DEFCONFIG" || true
+
+        echo "Configuration verification completed."
