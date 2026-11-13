@@ -1,5 +1,10 @@
 name: "Setup SukiSU-Ultra"
-description: "Clones and sets up SukiSU-Ultra for kernel building"
+description: "Clones and integrates SukiSU-Ultra into the kernel source tree"
+inputs:
+  susfs:
+    description: "Enable SUSFS support"
+    required: false
+    default: 'false'
 
 runs:
   using: "composite"
@@ -9,21 +14,36 @@ runs:
       run: |
         set -euo pipefail
 
-        # Define fallback default if SUKISU_REPO is empty/not passed
-        SUKISU_REPO="${SUKISU_REPO:-SukiSU-Ultra/SukiSU-Ultra}"
-
         echo "=============================================="
         echo "           Setting up SukiSU-Ultra            "
         echo "=============================================="
 
-        echo "[+] Setting up KernelSU..."
-        if [ -d "KernelSU" ]; then
-            echo "Existing KernelSU directory found. Removing..."
-            rm -rf KernelSU
+        # Locate the kernel source directory containing drivers/
+        KERNEL_SRC=$(find "$GITHUB_WORKSPACE/$CONFIG" -maxdepth 4 -type f -name "Kconfig" -path "*/drivers/Kconfig" | head -n 1 | xargs dirname | xargs dirname)
+
+        if [ -z "$KERNEL_SRC" ] || [ ! -d "$KERNEL_SRC" ]; then
+          echo "❌ Could not locate kernel source directory under $GITHUB_WORKSPACE/$CONFIG"
+          exit 1
         fi
 
-        echo "Cloning SukiSU-Ultra from https://github.com/$SUKISU_REPO..."
-        git clone "https://github.com/$SUKISU_REPO.git" KernelSU
-        
-        cd KernelSU
-        git fetch --tags origin main
+        echo "[+] Found kernel source at: $KERNEL_SRC"
+        cd "$KERNEL_SRC"
+
+        # Clean up old leftovers
+        rm -rf KernelSU drivers/kernelsu
+
+        # Run official SukiSU-Ultra setup script to link drivers/kernelsu and patch Makefiles
+        if [ "${{ inputs.susfs }}" == "true" ]; then
+          echo "[+] Integrating SukiSU-Ultra (susfs-main branch)..."
+          curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" | bash -s susfs-main
+        else
+          echo "[+] Integrating SukiSU-Ultra (main branch)..."
+          curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" | bash -s main
+        fi
+
+        # Verify integration
+        if [ ! -d "$KERNEL_SRC/drivers/kernelsu" ]; then
+          echo "❌ Error: drivers/kernelsu symlink was not created!"
+          exit 1
+        fi
+        echo "✅ SukiSU-Ultra successfully integrated into $KERNEL_SRC"
