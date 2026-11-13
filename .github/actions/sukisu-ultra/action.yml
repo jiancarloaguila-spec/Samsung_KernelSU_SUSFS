@@ -1,4 +1,4 @@
-name: "Setup SukiSU-Ultra"
+Name: "Setup SukiSU-Ultra"
 description: "Clones and integrates SukiSU-Ultra into the kernel source tree"
 inputs:
   susfs:
@@ -34,8 +34,8 @@ runs:
 
         # Run official SukiSU-Ultra setup script to link drivers/kernelsu and patch Makefiles
         if [ "${{ inputs.susfs }}" == "true" ]; then
-          echo "[+] Integrating SukiSU-Ultra (susfs-main branch)..."
-          curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" | bash -s susfs-main
+          echo "[+] Integrating SukiSU-Ultra (susfs branch)..."
+          curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" | bash -s susfs
         else
           echo "[+] Integrating SukiSU-Ultra (main branch)..."
           curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" | bash -s main
