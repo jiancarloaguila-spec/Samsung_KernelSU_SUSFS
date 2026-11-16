@@ -9,6 +9,7 @@ runs:
       run: |
         # 1. Determine the accurate target config file based on the branch choice
         target_config=""
+        secondary_config=""
         
         if [[ $BRANCH == SM-S938B* || "$BRANCH" == "SM-S931B-Oneui8" ]]; then
             echo "Nothing to see here, moving on..."
@@ -16,7 +17,11 @@ runs:
             target_config="$COMMON/arch/arm64/configs/s5e9945-bazel_defconfig"
         elif [[ $BRANCH == SM-A556* ]]; then
             target_config="$COMMON/arch/arm64/configs/s5e8845-bazel_defconfig"
-        elif [[ $BRANCH == SM-A055* || $BRANCH == SM-A146P* ]]; then
+        elif [[ $BRANCH == SM-A146P* ]]; then
+            # FIXED: Target the core GKI base tree defconfig, and keep the vendor config as secondary
+            target_config="$COMMON/arch/arm64/configs/gki_defconfig"
+            secondary_config="$CONFIG/kernel/kernel_device_modules-6.6/arch/arm64/configs/mediatek-bazel_defconfig"
+        elif [[ $BRANCH == SM-A055* ]]; then
             target_config="$CONFIG/kernel/kernel_device_modules-6.6/arch/arm64/configs/mediatek-bazel_defconfig"
         elif [[ $BRANCH == SM-A075* ]]; then
             target_config="$COMMON/arch/arm64/configs/a07_00_defconfig"
@@ -24,40 +29,50 @@ runs:
             target_config="$GKI_DEFCONFIG"
         fi
         
-        # 2. Process changes if target configuration path is defined
+        # Helper function to apply configuration injections
+        apply_configs() {
+          local config_file="$1"
+          if [ -f "$config_file" ]; then
+            echo "[+] Applying modules, root, and security alterations inside: $config_file"
+            
+            # --- Mountify Support ---
+            "$COMMON/scripts/config" --file "$config_file" --enable CONFIG_OVERLAY_FS
+            "$COMMON/scripts/config" --file "$config_file" --enable CONFIG_TMPFS_XATTR
+            "$COMMON/scripts/config" --file "$config_file" --enable CONFIG_TMPFS_POSIX_ACL
+            
+            # --- LKM / Core Hook Support ---
+            "$COMMON/scripts/config" --file "$config_file" --enable CONFIG_KALLSYMS
+            "$COMMON/scripts/config" --file "$config_file" --enable CONFIG_KALLSYMS_ALL
+            "$COMMON/scripts/config" --file "$config_file" --enable CONFIG_MODULES
+            
+            # --- KernelSU & SUSFS Features ---
+            "$COMMON/scripts/config" --file "$config_file" --enable CONFIG_KSU
+            "$COMMON/scripts/config" --file "$config_file" --enable CONFIG_KSU_SUSFS
+
+            # --- Samsung Security Reductions ---
+            "$COMMON/scripts/config" --file "$config_file" --disable CONFIG_UH
+            "$COMMON/scripts/config" --file "$config_file" --disable CONFIG_UH_RKP
+            "$COMMON/scripts/config" --file "$config_file" --disable CONFIG_UH_LKMAUTH
+            "$COMMON/scripts/config" --file "$config_file" --disable CONFIG_UH_LKM_BLOCK
+            "$COMMON/scripts/config" --file "$config_file" --disable CONFIG_RKP
+            "$COMMON/scripts/config" --file "$config_file" --disable CONFIG_RKP_CFP_JOPP
+            "$COMMON/scripts/config" --file "$config_file" --disable CONFIG_RKP_CFP_ROPP
+            "$COMMON/scripts/config" --file "$config_file" --disable CONFIG_RKP_CFP
+            "$COMMON/scripts/config" --file "$config_file" --disable CONFIG_SECURITY_DEFEX
+            "$COMMON/scripts/config" --file "$config_file" --disable CONFIG_PROCA
+            "$COMMON/scripts/config" --file "$config_file" --disable CONFIG_FIVE
+            "$COMMON/scripts/config" --file "$config_file" --disable CONFIG_KDP
+            "$COMMON/scripts/config" --file "$config_file" --disable CONFIG_KDP_NS
+            "$COMMON/scripts/config" --file "$config_file" --disable CONFIG_KNOX_NCM
+          fi
+        }
+
+        # 2. Process changes if targets are defined
         if [ -n "$target_config" ]; then
-          echo "[+] Applying all modules, root, and security nukes inside: $target_config"
-
-          # --- Mountify Support ---
-          "$COMMON/scripts/config" --file "$target_config" --enable CONFIG_OVERLAY_FS
-          "$COMMON/scripts/config" --file "$target_config" --enable CONFIG_TMPFS_XATTR
-          "$COMMON/scripts/config" --file "$target_config" --enable CONFIG_TMPFS_POSIX_ACL
-          
-          # --- LKM Support ---
-          "$COMMON/scripts/config" --file "$target_config" --enable CONFIG_KALLSYMS
-          "$COMMON/scripts/config" --file "$target_config" --enable CONFIG_KALLSYMS_ALL
-          "$COMMON/scripts/config" --file "$target_config" --enable CONFIG_MODULES
-          
-          # --- KernelSU & SUSFS Features ---
-          "$COMMON/scripts/config" --file "$target_config" --enable CONFIG_KSU
-          "$COMMON/scripts/config" --file "$target_config" --enable CONFIG_KSU_SUSFS
-
-          # --- Samsung Security Reductions ---
-          "$COMMON/scripts/config" --file "$target_config" --disable CONFIG_UH
-          "$COMMON/scripts/config" --file "$target_config" --disable CONFIG_UH_RKP
-          "$COMMON/scripts/config" --file "$target_config" --disable CONFIG_UH_LKMAUTH
-          "$COMMON/scripts/config" --file "$target_config" --disable CONFIG_UH_LKM_BLOCK
-          "$COMMON/scripts/config" --file "$target_config" --disable CONFIG_RKP
-          "$COMMON/scripts/config" --file "$target_config" --disable CONFIG_RKP_CFP_JOPP
-          "$COMMON/scripts/config" --file "$target_config" --disable CONFIG_RKP_CFP_ROPP
-          "$COMMON/scripts/config" --file "$target_config" --disable CONFIG_RKP_CFP
-          "$COMMON/scripts/config" --file "$target_config" --disable CONFIG_SECURITY_DEFEX
-          "$COMMON/scripts/config" --file "$target_config" --disable CONFIG_PROCA
-          "$COMMON/scripts/config" --file "$target_config" --disable CONFIG_FIVE
-          "$COMMON/scripts/config" --file "$target_config" --disable CONFIG_KDP
-          "$COMMON/scripts/config" --file "$target_config" --disable CONFIG_KDP_NS
-          "$COMMON/scripts/config" --file "$target_config" --disable CONFIG_KNOX_NCM
-          
+          apply_configs "$target_config"
+          if [ -n "$secondary_config" ]; then
+            apply_configs "$secondary_config"
+          fi
           echo "✅ Target defconfig changes applied fully."
         else
           echo "⚠️ No targeted defconfig found for this active compilation group."
@@ -67,5 +82,4 @@ runs:
       shell: bash
       run: |
         cd "$COMMON"
-        # Remove check_defconfig validation restriction block
-        sed -i 's/check_defconfig//' ./build.config.gki
+        sed -i 's/check_defconfig//' ./build.config.gki 
