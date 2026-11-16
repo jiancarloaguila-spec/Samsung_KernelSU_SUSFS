@@ -4,7 +4,7 @@ inputs:
   susfs:
     description: "Enable SUSFS support"
     required: false
-    default: 'false'
+    default: 'true'
 
 runs:
   using: "composite"
@@ -32,8 +32,8 @@ runs:
         # Clean up old leftovers
         rm -rf KernelSU drivers/kernelsu
 
-        # Run official SukiSU-Ultra setup script to link drivers/kernelsu and patch Makefiles
-        if [ "${{ inputs.susfs }}" == "true" ]; then
+        # Run official SukiSU-Ultra setup script with the correct raw URL pathing
+        if [ "${{ inputs.susfs }}" == "true" ] || [ "${SUSFS:-false}" == "true" ]; then
           echo "[+] Integrating SukiSU-Ultra (susfs branch)..."
           curl -LSs "https://githubusercontent.com" | bash -s susfs
         else
