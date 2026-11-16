@@ -35,12 +35,10 @@ runs:
         # Run official SukiSU-Ultra setup script to link drivers/kernelsu and patch Makefiles
         if [ "${{ inputs.susfs }}" == "true" ]; then
           echo "[+] Integrating SukiSU-Ultra (susfs branch)..."
-          # Downloads script and passes 'susfs' as the git target branch/tag
           curl -LSs "https://githubusercontent.com" | bash -s susfs
         else
           echo "[+] Integrating SukiSU-Ultra (default stable release)..."
-          # Leaving the argument blank allows setup.sh to safely resolve and checkout the latest stable tag
-          curl -LSs "https://githubusercontent.com" | bash
+          curl -LSs "https://githubusercontent.com" | bash -s main
         fi
 
         # Verify integration
