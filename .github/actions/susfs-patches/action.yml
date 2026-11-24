@@ -6,7 +6,7 @@ inputs:
   required: false
   default: ''
  flavor:
-  description: 'root flavor (next / kernelsu / bakasu)'
+  description: 'root flavor (next / kernelsu / bakasu / sukisu / finasu)'
   required: false
   default: ''
 
@@ -29,18 +29,6 @@ runs:
         git fetch https://gitlab.com/pershoot/susfs4ksu.git gki-android14-6.1-dev
         git log ..FETCH_HEAD --oneline -n 2 | awk '{print $1}' | tac | xargs git cherry-pick
       fi
-      
-      #cd susfs4ksu
-      #if [[ "$ANDROID_VER-$KERNEL_VER" == "android12-5.10" ]]; then
-        #COMMIT=ce2c2b2dea28c89d33f61af898cc18a93bf65ae9
-      #elif [[ "$ANDROID_VER-$KERNEL_VER" == "android13-5.15" ]]; then
-       # COMMIT=529919fbc9f8aee6ee70eb3a8890ef33af0a109c
-      #elif [[ "$ANDROID_VER-$KERNEL_VER" == "android14-6.1" ]]; then
-        #COMMIT=d1327b62e0854603cfc26e2226e0a993ec9b0656
-      #elif [[ "$ANDROID_VER-$KERNEL_VER" == "android15-6.6" ]]; then
-        #COMMIT=676d202ed2cc322a2f90bcb2b56bc4f6a864acb8
-      #fi
-      #git checkout "$COMMIT"
 
       SUSFS4KSU="$ROOT/susfs4ksu"
       echo "SUSFS4KSU=$SUSFS4KSU" >> $GITHUB_ENV
@@ -50,7 +38,8 @@ runs:
      shell: bash
      run: |
       # tiann KernelSU ships no SUSFS: apply the enable patch to the root
-      # checkout. KernelSU-Next and BakaSU include SUSFS themselves.
+      # checkout. KernelSU-Next, BakaSU, SukiSU-Ultra, and FinaSU handle
+      # SUSFS on their side.
       PATCH="$SUSFS4KSU/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch"
       if [ ! -f "$PATCH" ]; then
         echo "Missing 10_enable_susfs_for_ksu.patch at $PATCH" >&2
@@ -151,19 +140,11 @@ runs:
         echo "No patch file found, skipping"
       fi
 
-        # SUSFS's OPEN_REDIRECT code unconditionally calls VMA_PAD_START(), which
-        # only exists on GKI branches that carry Google's page-size-migration
-        # feature (added to each android version's kernel/common branch at a
-        # different, sometime later, os_patch_level). Older os_patch_levels in
-        # our build matrix predate it, so fall back to a no-padding definition
-        # when the real header/macro isn't present. This is version-agnostic and
-        # a no-op wherever the real header already provides it.
         if grep -q 'VMA_PAD_START(' fs/proc/task_mmu.c && ! grep -qE '#include <linux/pgsize_migration(_inline)?\.h>|define VMA_PAD_START' fs/proc/task_mmu.c; then
           sed -i '1a #ifndef VMA_PAD_START\n#define VMA_PAD_START(vma) ((vma)->vm_end)\n#endif' fs/proc/task_mmu.c
           echo "Added VMA_PAD_START fallback definition to fs/proc/task_mmu.c"
         fi
 
-        # Same story for __fold_filemap_fixup_entry(), declared in page_size_compat.h.
         if grep -q '__fold_filemap_fixup_entry' fs/proc/task_mmu.c && ! grep -q '#include <linux/page_size_compat.h>' fs/proc/task_mmu.c; then
           sed -i '/#include <linux\/pkeys.h>/a #include <linux/page_size_compat.h>' fs/proc/task_mmu.c
           echo "Added page_size_compat.h include to fs/proc/task_mmu.c"
