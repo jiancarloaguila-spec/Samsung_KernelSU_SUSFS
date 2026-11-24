@@ -49,11 +49,7 @@ runs:
             repo="https://github.com/SukiSU-Ultra/SukiSU-Ultra.git"
             directory="SukiSU-Ultra"
             manager="SukiSU Ultra Manager"
-            if [[ ${{ inputs.susfs }} == 'true' ]]; then
-             repobranch="susfs-main"
-            else
-             repobranch="main"
-            fi
+            repobranch="main"
             ;;
           finasu)
             repo="https://github.com/LyraVoid/FinaSU.git"
