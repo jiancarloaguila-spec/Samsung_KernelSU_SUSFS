@@ -35,6 +35,8 @@ on:
           - KernelSU-Next
           - KernelSU
           - BakaSU
+          - SukiSU-Ultra
+          - FinaSU
           - All
           - none
         default: KernelSU-Next
@@ -106,6 +108,8 @@ jobs:
     outputs:
       ksu_commit: ${{ steps.pins.outputs.ksu_commit }}
       bakasu_commit: ${{ steps.pins.outputs.bakasu_commit }}
+      sukisu_commit: ${{ steps.pins.outputs.sukisu_commit }}
+      finasu_commit: ${{ steps.pins.outputs.finasu_commit }}
     steps:
       - name: Resolve root commits
         id: pins
@@ -121,33 +125,30 @@ jobs:
             echo "$1=$2" >> "$GITHUB_OUTPUT"
           }
 
-          # Audited pins, paired with the SUSFS branch tip this repo clones
-          # (susfs-patches takes simonpunk gki-* at tip, it is not pinned):
-          #  - KernelSU 64833c0: 10_enable_susfs_for_ksu.patch applies cleanly
-          #    and defines the ksu_setup_preinit_file /
-          #    ksu_preinit_handle_post_execveat hooks the current gki-* patch
-          #    calls. The previous 2026-05 pin did not, and the SUSFS hunk now
-          #    fails to apply (kernel/supercall/supercall.c).
-          #  - BakaSU 7b65bde: provides those same hooks in-tree. The previous
-          #    833edb0 pin did not and died at vmlinux link with undefined
-          #    ksu_setup_preinit_file / ksu_preinit_handle_post_execveat.
           PIN_KERNELSU="64833c005eca6a8dc3d73ec2d37d84c37e0d9ad2"
           PIN_BAKASU="7b65bde0710b5e7c6f755545cb15a4abd417f3a8"
 
-          # KernelSU-Next is deliberately NOT pinned here: it is the only flavor
-          # that follows a moving branch tip, and the root-setup action owns that
-          # repo/branch choice (pershoot/KernelSU-Next dev-susfs when SUSFS is on,
-          # dev otherwise). Pinning it in two places is how the two drifted apart.
+          # Resolve latest branch tips dynamically for SukiSU-Ultra and FinaSU
+          # (replace with a 40-char commit SHA once you pin a known-good commit)
+          if [ "${{ inputs.susfs }}" = "true" ]; then
+            SUKISU_REF="refs/heads/susfs-main"
+          else
+            SUKISU_REF="refs/heads/main"
+          fi
+          PIN_SUKISU="$(git ls-remote https://github.com/SukiSU-Ultra/SukiSU-Ultra.git "$SUKISU_REF" | cut -f1)"
+          PIN_FINASU="$(git ls-remote https://github.com/LyraVoid/FinaSU.git refs/heads/main | cut -f1)"
+
           emit ksu_commit "$PIN_KERNELSU"
           emit bakasu_commit "$PIN_BAKASU"
+          emit sukisu_commit "$PIN_SUKISU"
+          emit finasu_commit "$PIN_FINASU"
 
   build-samsung:
     needs: resolve-roots
     strategy:
       fail-fast: false
       matrix:
-        # One run per selected root implementation; `All` fans out over all three.
-        flavor: ${{ fromJSON(inputs.root_flavor == 'All' && '["next","kernelsu","bakasu"]' || inputs.root_flavor == 'KernelSU-Next' && '["next"]' || inputs.root_flavor == 'KernelSU' && '["kernelsu"]' || inputs.root_flavor == 'BakaSU' && '["bakasu"]' || '["none"]') }}
+        flavor: ${{ fromJSON(inputs.root_flavor == 'All' && '["next","kernelsu","bakasu","sukisu","finasu"]' || inputs.root_flavor == 'KernelSU-Next' && '["next"]' || inputs.root_flavor == 'KernelSU' && '["kernelsu"]' || inputs.root_flavor == 'BakaSU' && '["bakasu"]' || inputs.root_flavor == 'SukiSU-Ultra' && '["sukisu"]' || inputs.root_flavor == 'FinaSU' && '["finasu"]' || '["none"]') }}
     uses: ./.github/workflows/kernel-samsung.yml
     secrets: inherit
     with:
@@ -156,8 +157,7 @@ jobs:
       unicodefix: ${{ inputs.unicodefix }}
       nomount: ${{ inputs.nomount }}
       root_flavor: ${{ matrix.flavor }}
-      # next passes no commit: root-setup resolves its own tip for the branch it picked
-      root_commit: ${{ matrix.flavor == 'kernelsu' && needs.resolve-roots.outputs.ksu_commit || matrix.flavor == 'bakasu' && needs.resolve-roots.outputs.bakasu_commit || '' }}
+      root_commit: ${{ matrix.flavor == 'kernelsu' && needs.resolve-roots.outputs.ksu_commit || matrix.flavor == 'bakasu' && needs.resolve-roots.outputs.bakasu_commit || matrix.flavor == 'sukisu' && needs.resolve-roots.outputs.sukisu_commit || matrix.flavor == 'finasu' && needs.resolve-roots.outputs.finasu_commit || '' }}
       droidspace: ${{ inputs.droidspace }}
       ntsync: ${{ inputs.ntsync }}
       bbrv3: ${{ inputs.bbrv3 }}
@@ -168,7 +168,6 @@ jobs:
 
   release:
     runs-on: ubuntu-latest
-    # Run when every build either succeeded or was not selected for this flavor.
     if: ${{ !cancelled() && !failure() && inputs.release_type != 'Actions' }}
     needs:
       - resolve-roots
@@ -181,7 +180,7 @@ jobs:
     steps:
       - name: Free Disk Space
         if: true
-        uses: endersonmenezes/free-disk-space@v3  # Use @main for latest, @v3 for stable
+        uses: endersonmenezes/free-disk-space@v3
         with:
           remove_android: true
           remove_dotnet: true
@@ -191,8 +190,8 @@ jobs:
           remove_packages: "azure-cli google-cloud-cli microsoft-edge-stable google-chrome-stable firefox postgresql* temurin-* *llvm* mysql* dotnet-sdk-*"
           remove_packages_one_command: true
           remove_folders: "/usr/share/swift /usr/share/miniconda /usr/share/az* /usr/local/lib/node_modules /usr/local/share/chromium /usr/local/share/powershell /usr/local/julia /usr/local/aws-cli /usr/local/aws-sam-cli /usr/share/gradle"
-          rm_cmd: "rmz"  # Use 'rmz' for faster deletion (default: 'rm')
-          rmz_version: "3.1.1"  # Required when rm_cmd is 'rmz'
+          rm_cmd: "rmz"
+          rmz_version: "3.1.1"
           testing: false
       
       - name: Checkout code
@@ -223,11 +222,12 @@ jobs:
          echo "SUSFS_515=$(git ls-remote https://gitlab.com/simonpunk/susfs4ksu.git refs/heads/gki-android13-5.15 | cut -f1)" >> $GITHUB_ENV
          echo "SUSFS_61=$(git ls-remote https://gitlab.com/simonpunk/susfs4ksu.git refs/heads/gki-android14-6.1 | cut -f1)" >> $GITHUB_ENV
          echo "SUSFS_66=$(git ls-remote https://gitlab.com/simonpunk/susfs4ksu.git refs/heads/gki-android15-6.6 | cut -f1)" >> $GITHUB_ENV
-         # Match the branch root-setup builds: dev-susfs when SUSFS is on, dev otherwise.
          if [ "${{ inputs.susfs }}" = "true" ]; then KSUN_BRANCH="dev-susfs"; else KSUN_BRANCH="dev"; fi
          echo "KSUN_HASH=$(git ls-remote https://github.com/pershoot/KernelSU-Next.git refs/heads/$KSUN_BRANCH | cut -f1)" >> $GITHUB_ENV
          echo "KSU_HASH=${{ needs.resolve-roots.outputs.ksu_commit }}" >> $GITHUB_ENV
          echo "BAKASU_HASH=${{ needs.resolve-roots.outputs.bakasu_commit }}" >> $GITHUB_ENV
+         echo "SUKISU_HASH=${{ needs.resolve-roots.outputs.sukisu_commit }}" >> $GITHUB_ENV
+         echo "FINASU_HASH=${{ needs.resolve-roots.outputs.finasu_commit }}" >> $GITHUB_ENV
          echo "BBG_HASH=$(git ls-remote https://github.com/vc-teahouse/Baseband-guard.git refs/heads/main | cut -f1)" >> $GITHUB_ENV
          echo "NM_HASH=$(git ls-remote https://github.com/maxsteeel/nomount.git refs/heads/master | cut -f1)" >> $GITHUB_ENV
 
@@ -245,10 +245,12 @@ jobs:
 
           if [ "${{ inputs.root_flavor }}" != "none" ]; then
           cat <<'EOF' >> release_body.md
-          -> Root implementations: KernelSU-Next, KernelSU, BakaSU (selected: ${{ inputs.root_flavor }})
+          -> Root implementations: KernelSU-Next, KernelSU, BakaSU, SukiSU-Ultra, FinaSU (selected: ${{ inputs.root_flavor }})
           -> KernelSU-Next v3.4.2 - https://github.com/KernelSU-Next/KernelSU-Next
           -> KernelSU - https://github.com/tiann/KernelSU
           -> BakaSU - https://github.com/Baka-SU/BakaSU
+          -> SukiSU-Ultra - https://github.com/SukiSU-Ultra/SukiSU-Ultra
+          -> FinaSU - https://github.com/LyraVoid/FinaSU
           NOTE: For kernel integration of KernelSU-Next I am using pershoots fork of KernelSU-next. He has claimed that even though everything works fine, the dev has warned that this is not production ready!
           EOF
           fi
@@ -269,12 +271,6 @@ jobs:
           if [ "${{ inputs.unicodefix }}" = "true" ]; then
           cat <<'EOF' >> release_body.md
           -> unicode fix - Prevent path traversal and other detections using non-printable Unicode codepoints
-          EOF
-          fi
-
-          if [ "${{ inputs.zeromount }}" = "true" ]; then
-          cat <<'EOF' >> release_body.md
-          -> Zeromount - https://github.com/Enginex0/zeromount
           EOF
           fi
 
@@ -341,10 +337,12 @@ jobs:
           KSUN: ${{ env.KSUN_HASH }}
           KSU: ${{ env.KSU_HASH }}
           BAKASU: ${{ env.BAKASU_HASH }}
+          SUKISU: ${{ env.SUKISU_HASH }}
+          FINASU: ${{ env.FINASU_HASH }}
           
           EOF
           fi
-          if ${{ inputs.susfs }} == 'true' ]]; then
+          if [ "${{ inputs.susfs }}" = "true" ]; then
           cat <<'EOF' >> release_body.md
           SUSFS: 
           android12-5.10: ${{ env.SUSFS_510 }}
@@ -355,14 +353,14 @@ jobs:
           EOF
           fi
           
-          if ${{ inputs.bbg }} == 'true' ]]; then
+          if [ "${{ inputs.bbg }}" = "true" ]; then
           cat <<'EOF' >> release_body.md
           BBG: ${{ env.BBG_HASH }}
           
           EOF
           fi
           
-          if ${{ inputs.nomount }} == 'true' ]]; then
+          if [ "${{ inputs.nomount }}" = "true" ]; then
           cat <<'EOF' >> release_body.md
           NoMount: ${{ env.NM_HASH }}
           
@@ -386,11 +384,9 @@ jobs:
             echo "No artifact directories found under ./downloaded-artifacts; skipping upload."
           else
             for dir in "${anykernel_dirs[@]}"; do
-              # Check if this is an AnyKernel3 artifact directory
               if [[ "$(basename "$dir")" == *"-AnyKernel3" ]]; then
                 artifact_name=$(basename "$dir")
                 echo "Creating ZIP for $artifact_name..."
-                # Navigate into the directory and zip its contents directly
                 cd "$dir"
                 zip -r -9 "../../${artifact_name}.zip" ./*
                 cd - > /dev/null
@@ -399,23 +395,3 @@ jobs:
               fi
             done
           fi
-            
-#      - name: Send Telegram Notification
-#        if: inputs.release_type != 'Actions'
-#        run: |
-#          RELEASE_TYPE_TEXT=""
-#          if [ "${{ inputs.release_type }}" == "Pre-Release" ]; then
-#            RELEASE_TYPE_TEXT="🧪 *Pre-Release*"
-#          else
-#            RELEASE_TYPE_TEXT="🚀 *Release*"
-#          fi
-#          
-#          curl -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage" \
-#            -F chat_id="${{ secrets.TELEGRAM_CHAT_ID }}" \
-#            -F message_thread_id="${{ secrets.TELEGRAM_TOPIC_ID_GKI }}" \
-#            -F text="
-#            🌽 *New Kernel $RELEASE_TYPE_TEXT Uploaded*  
-#            📦 *Repository:* [${{ github.repository }}](https://github.com/${{ github.repository }})  
-#            ✏️ *Commit:* [${{ github.sha }}](https://github.com/${{ github.repository }}/commit/${{ github.sha }})  
-#            [🔗 View GitHub Release](https://github.com/${{ github.repository }}/releases/tag/${{ env.NEW_TAG }})" \
-#            -F parse_mode="Markdown"
