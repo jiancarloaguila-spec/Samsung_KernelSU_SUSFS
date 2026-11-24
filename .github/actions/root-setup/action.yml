@@ -2,10 +2,10 @@ name: Setup pinned root implementation
 description: 'Clone exactly one supported root implementation and wire it into the kernel tree'
 inputs:
   flavor:
-    description: 'kernelsu, next, or bakasu'
+    description: 'kernelsu, next, bakasu, sukisu, or finasu'
     required: true
   susfs:
-    description: 'is susfs enabled (for pershoot ksun fork)'
+    description: 'is susfs enabled (for susfs-capable forks)'
     required: true
   commit:
     description: 'Full immutable commit SHA (empty = tip of the flavor branch)'
@@ -43,6 +43,22 @@ runs:
             repo="https://github.com/Baka-SU/BakaSU.git"
             directory="BakaSU"
             manager="BakaSU Manager"
+            repobranch="main"
+            ;;
+          sukisu)
+            repo="https://github.com/SukiSU-Ultra/SukiSU-Ultra.git"
+            directory="SukiSU-Ultra"
+            manager="SukiSU Ultra Manager"
+            if [[ ${{ inputs.susfs }} == 'true' ]]; then
+             repobranch="susfs-main"
+            else
+             repobranch="main"
+            fi
+            ;;
+          finasu)
+            repo="https://github.com/LyraVoid/FinaSU.git"
+            directory="FinaSU"
+            manager="FinaSU Manager"
             repobranch="main"
             ;;
           *)
@@ -87,7 +103,7 @@ runs:
 
         echo "KROOT=$KROOT CLONE_BASE=$CLONE_BASE flavor=$flavor"
 
-        for candidate in KernelSU KernelSU-Next BakaSU; do
+        for candidate in KernelSU KernelSU-Next BakaSU SukiSU-Ultra FinaSU; do
           if [ "$candidate" != "$directory" ] && [ -e "$CLONE_BASE/$candidate" ]; then
             echo "Refusing mixed root implementations: found $candidate." >&2
             exit 1
@@ -175,25 +191,19 @@ runs:
         cd kernel
 
         # Dynamically target the right version and tag variable patterns
-        if [ "$flavor" = "bakasu" ]; then
-          # Add the 700 offset specifically required by BakaSU's version logic
-          KSU_VERSION=$((KSU_VERSION + 700))
+        if [ "$flavor" = "bakasu" ] || [ "$flavor" = "sukisu" ] || [ "$flavor" = "finasu" ]; then
+          if [ "$flavor" = "bakasu" ]; then
+            KSU_VERSION=$((KSU_VERSION + 700))
+          fi
 
-          # BakaSU targets KSU_VERSION and KSU_TAG_NAME explicitly
           sed -i "s|^KSU_VERSION :=.*|KSU_VERSION := ${KSU_VERSION}|" Kbuild
           sed -i "s|^KSU_TAG_NAME.*:=.*|KSU_TAG_NAME := ${KSU_GIT_TAG}|" Kbuild
-          # Bake the short SHA too (both the probe and the -dirty append
-          # match, so both become the literal and the suffix is gone), plus
-          # the branch the pin was taken from.
           sed -i "s|^KSU_COMMIT_SHA  :=.*|KSU_COMMIT_SHA  := ${KSU_SHORT}|" Kbuild
           sed -i "s|^KSU_BRANCH_NAME :=.*|KSU_BRANCH_NAME := ${repobranch}|" Kbuild
         elif [ "$flavor" = "next" ]; then
-          # KernelSU-Next uses the fallback pattern
           sed -i "s/^KSU_VERSION_FALLBACK := 1$/KSU_VERSION_FALLBACK := ${KSU_VERSION}/" Kbuild
           sed -i "s|^KSU_VERSION_TAG_FALLBACK := v0.0.1$|KSU_VERSION_TAG_FALLBACK := ${KSU_GIT_TAG}|" Kbuild
         else
-          # tiann KernelSU: replace the git-count query with the resolved
-          # count, mark it valid, and hardcode the evaluated version.
           sed -i "s|^KSU_GIT_VERSION :=.*|KSU_GIT_VERSION := ${KSU_GIT_VERSION}|" Kbuild
           sed -i "s|^KSU_GIT_VERSION_VALID :=.*|KSU_GIT_VERSION_VALID := 1|" Kbuild
           sed -i "s|^\$(eval KSU_VERSION=\$(shell expr 30000 + \$(KSU_GIT_VERSION)))|\$(eval KSU_VERSION=${KSU_VERSION})|" Kbuild
