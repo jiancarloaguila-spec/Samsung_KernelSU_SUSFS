@@ -119,7 +119,7 @@ jobs:
 
           emit() {
             if ! [[ "$2" =~ ^[0-9a-f]{40}$ ]]; then
-              echo "Failed to resolve $1 (got: ${2:-empty})" >&2
+              echo "Failed to resolve $1 (got:${2:-empty})" >&2
               exit 1
             fi
             echo "$1=$2" >> "$GITHUB_OUTPUT"
@@ -130,12 +130,7 @@ jobs:
 
           # Resolve latest branch tips dynamically for SukiSU-Ultra and FinaSU
           # (replace with a 40-char commit SHA once you pin a known-good commit)
-          if [ "${{ inputs.susfs }}" = "true" ]; then
-            SUKISU_REF="refs/heads/susfs-main"
-          else
-            SUKISU_REF="refs/heads/main"
-          fi
-          PIN_SUKISU="$(git ls-remote https://github.com/SukiSU-Ultra/SukiSU-Ultra.git "$SUKISU_REF" | cut -f1)"
+          PIN_SUKISU="$(git ls-remote https://github.com/SukiSU-Ultra/SukiSU-Ultra.git refs/heads/main | cut -f1)"
           PIN_FINASU="$(git ls-remote https://github.com/LyraVoid/FinaSU.git refs/heads/main | cut -f1)"
 
           emit ksu_commit "$PIN_KERNELSU"
@@ -218,18 +213,18 @@ jobs:
 
       - name: get commit hashes
         run: |
-         echo "SUSFS_510=$(git ls-remote https://gitlab.com/simonpunk/susfs4ksu.git refs/heads/gki-android12-5.10 | cut -f1)" >> $GITHUB_ENV
-         echo "SUSFS_515=$(git ls-remote https://gitlab.com/simonpunk/susfs4ksu.git refs/heads/gki-android13-5.15 | cut -f1)" >> $GITHUB_ENV
-         echo "SUSFS_61=$(git ls-remote https://gitlab.com/simonpunk/susfs4ksu.git refs/heads/gki-android14-6.1 | cut -f1)" >> $GITHUB_ENV
-         echo "SUSFS_66=$(git ls-remote https://gitlab.com/simonpunk/susfs4ksu.git refs/heads/gki-android15-6.6 | cut -f1)" >> $GITHUB_ENV
+         echo "SUSFS_510=$(git ls-remote https://gitlab.com/simonpunk/susfs4ksu.git refs/heads/gki-android12-5.10 \vert{} cut -f1)" >> $GITHUB_ENV
+         echo "SUSFS_515=$(git ls-remote https://gitlab.com/simonpunk/susfs4ksu.git refs/heads/gki-android13-5.15 \vert{} cut -f1)" >> $GITHUB_ENV
+         echo "SUSFS_61=$(git ls-remote https://gitlab.com/simonpunk/susfs4ksu.git refs/heads/gki-android14-6.1 \vert{} cut -f1)" >> $GITHUB_ENV
+         echo "SUSFS_66=$(git ls-remote https://gitlab.com/simonpunk/susfs4ksu.git refs/heads/gki-android15-6.6 \vert{} cut -f1)" >> $GITHUB_ENV
          if [ "${{ inputs.susfs }}" = "true" ]; then KSUN_BRANCH="dev-susfs"; else KSUN_BRANCH="dev"; fi
-         echo "KSUN_HASH=$(git ls-remote https://github.com/pershoot/KernelSU-Next.git refs/heads/$KSUN_BRANCH | cut -f1)" >> $GITHUB_ENV
+         echo "KSUN_HASH=$(git ls-remote https://github.com/pershoot/KernelSU-Next.git refs/heads/$KSUN_BRANCH \vert{} cut -f1)" >> $GITHUB_ENV
          echo "KSU_HASH=${{ needs.resolve-roots.outputs.ksu_commit }}" >> $GITHUB_ENV
          echo "BAKASU_HASH=${{ needs.resolve-roots.outputs.bakasu_commit }}" >> $GITHUB_ENV
          echo "SUKISU_HASH=${{ needs.resolve-roots.outputs.sukisu_commit }}" >> $GITHUB_ENV
          echo "FINASU_HASH=${{ needs.resolve-roots.outputs.finasu_commit }}" >> $GITHUB_ENV
-         echo "BBG_HASH=$(git ls-remote https://github.com/vc-teahouse/Baseband-guard.git refs/heads/main | cut -f1)" >> $GITHUB_ENV
-         echo "NM_HASH=$(git ls-remote https://github.com/maxsteeel/nomount.git refs/heads/master | cut -f1)" >> $GITHUB_ENV
+         echo "BBG_HASH=$(git ls-remote https://github.com/vc-teahouse/Baseband-guard.git refs/heads/main \vert{} cut -f1)" >> $GITHUB_ENV
+         echo "NM_HASH=$(git ls-remote https://github.com/maxsteeel/nomount.git refs/heads/master \vert{} cut -f1)" >> $GITHUB_ENV
 
       - name: Set release body
         run: |
@@ -383,15 +378,3 @@ jobs:
           if [ ${#anykernel_dirs[@]} -eq 0 ]; then
             echo "No artifact directories found under ./downloaded-artifacts; skipping upload."
           else
-            for dir in "${anykernel_dirs[@]}"; do
-              if [[ "$(basename "$dir")" == *"-AnyKernel3" ]]; then
-                artifact_name=$(basename "$dir")
-                echo "Creating ZIP for $artifact_name..."
-                cd "$dir"
-                zip -r -9 "../../${artifact_name}.zip" ./*
-                cd - > /dev/null
-                echo "Uploading ${artifact_name}.zip..."
-                gh release upload ${{ env.NEW_TAG }} "${artifact_name}.zip"
-              fi
-            done
-          fi
