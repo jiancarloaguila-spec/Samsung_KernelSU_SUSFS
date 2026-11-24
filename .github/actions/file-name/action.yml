@@ -2,7 +2,7 @@ name: set file name for ak3zip
 description: set file name for ak3 zip
 inputs:
  root_flavor:
-  description: 'next / kernelsu / bakasu / sukisu / finasu'
+  description: 'next / kernelsu / bakasu'
   required: true
  susfs:
   description: 'susfs'
@@ -46,8 +46,6 @@ runs:
        next) VARIANT_LABEL="KSUN" ;;
        kernelsu) VARIANT_LABEL="KSU" ;;
        bakasu) VARIANT_LABEL="BAKASU" ;;
-       sukisu) VARIANT_LABEL="SUKISU" ;;
-       finasu) VARIANT_LABEL="FINASU" ;;
      esac
 
      FILE_NAME="${ARTIFACT_BASE}"
